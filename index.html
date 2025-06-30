@@ -120,7 +120,9 @@
             <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
         </div>
 
-        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50">
+        <!-- ***** 수정된 부분 ***** -->
+        <!-- 아래 div의 class에서 'flex'를 제거했습니다. .modal 스타일이 적용되어 평소에는 보이지 않게 됩니다. -->
+        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
                 <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
                 <p class="text-gray-600 mb-6">삭제한 메모는 다시 복구할 수 없어요.</p>
