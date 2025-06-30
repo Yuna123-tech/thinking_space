@@ -113,17 +113,18 @@
                 </form>
             </div>
 
-            <div id="notes-board" class="lg:col-span-2">
+            <!-- ***** 수정된 부분 1: 로딩 화면을 전체가 아닌 메모 목록 부분에만 표시합니다. ***** -->
+            <div id="notes-board" class="lg:col-span-2 relative min-h-[400px]">
+                <!-- 로더를 메모 게시판 안으로 이동 -->
+                <div id="loader" class="absolute inset-0 bg-gray-100 bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
+                    <div class="animate-spin rounded-full h-24 w-24 border-t-2 border-b-2 border-indigo-500"></div>
+                </div>
                 <!-- 날짜별로 그룹화된 저장 목록(메모)이 여기에 표시됩니다. -->
             </div>
         </main>
         
-        <div id="loader" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-            <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
-        </div>
+        <!-- 전체 화면 로더는 삭제했습니다. -->
 
-        <!-- ***** 수정된 부분 ***** -->
-        <!-- 아래 div의 class에서 'flex'를 제거했습니다. .modal 스타일이 적용되어 평소에는 보이지 않게 됩니다. -->
         <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
                 <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
@@ -138,9 +139,10 @@
 
     <!-- Firebase SDK -->
     <script type="module">
+        // ***** 수정된 부분 2: orderBy, limit를 추가로 import 합니다. *****
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", ...console.log("Firebase config not found") };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -163,7 +165,7 @@
         let noteIdToDelete = null;
 
         onAuthStateChanged(auth, user => {
-            loader.style.display = 'flex';
+            // 전체 로더를 제어하는 코드는 삭제했습니다.
             if (user) {
                 currentUserId = user.uid;
                 authStatusEl.textContent = '인증 상태: 완료';
@@ -173,13 +175,13 @@
             } else {
                 authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
                 isAuthReady = false;
+                loader.style.display = 'none'; // 인증 실패 시 로더 숨기기
             }
-            loader.style.display = 'none';
         });
 
         async function authenticate() {
             try {
-                loader.style.display = 'flex';
+                // authenticate 함수 시작 시 로더를 보여줄 필요가 없어졌습니다.
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -212,7 +214,7 @@
                 await addDoc(notesCollectionRef, {
                     class: studentClass, number: studentNumber, name: studentName, content: content,
                     createdAt: serverTimestamp(), authorId: currentUserId,
-                    likeCount: 0, likedBy: [] // 공감 기능 필드 추가
+                    likeCount: 0, likedBy: []
                 });
                 noteForm.reset();
             } catch (error) {
@@ -223,12 +225,17 @@
 
         function loadNotes() {
             if (!isAuthReady) return;
-            const q = query(notesCollectionRef);
+            loader.style.display = 'flex'; // 데이터 로딩 시작 시 로더 표시
+
+            // ***** 수정된 부분 3: 최신순으로 30개만 가져오도록 쿼리를 수정합니다. *****
+            const q = query(notesCollectionRef, orderBy("createdAt", "desc"), limit(30));
+            
             onSnapshot(q, (snapshot) => {
                 let notesData = [];
                 snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
                 
-                notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+                // 쿼리에서 이미 정렬했으므로 이 코드는 필요 없습니다.
+                // notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
 
                 const groupedNotes = notesData.reduce((acc, note) => {
                     const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
@@ -238,18 +245,27 @@
                 }, {});
 
                 renderGroupedNotes(groupedNotes);
+                loader.style.display = 'none'; // 데이터 렌더링 완료 후 로더 숨기기
             }, (error) => {
                 console.error("Error fetching notes: ", error);
                 notesBoard.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
+                loader.style.display = 'none'; // 에러 발생 시에도 로더 숨기기
             });
         }
 
         function renderGroupedNotes(groupedNotes) {
-            notesBoard.innerHTML = '';
+            // 로더가 notesBoard 안에 있으므로, innerHTML을 초기화할 때 로더가 사라지지 않도록 처리합니다.
+            const contentContainer = document.querySelector('#notes-board > div:not(#loader)') || document.createElement('div');
+            if (!contentContainer.parentElement) {
+                notesBoard.appendChild(contentContainer);
+            }
+            contentContainer.innerHTML = '';
+
+
             const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
             
             if (sortedDates.length === 0) {
-                notesBoard.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
+                contentContainer.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
                 return;
             }
 
@@ -257,7 +273,7 @@
                 const dateHeader = document.createElement('h2');
                 dateHeader.className = 'date-header';
                 dateHeader.textContent = date;
-                notesBoard.appendChild(dateHeader);
+                contentContainer.appendChild(dateHeader);
 
                 const dayNotesContainer = document.createElement('div');
                 dayNotesContainer.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6';
@@ -265,7 +281,7 @@
                 groupedNotes[date].forEach(note => {
                     dayNotesContainer.appendChild(createNoteElement(note));
                 });
-                notesBoard.appendChild(dayNotesContainer);
+                contentContainer.appendChild(dayNotesContainer);
             }
         }
         
@@ -311,7 +327,7 @@
                 div.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     noteIdToDelete = e.currentTarget.dataset.id;
-                    deleteModal.style.display = 'flex'; // 삭제 버튼 클릭 시 모달을 보이게 함
+                    deleteModal.style.display = 'flex';
                 });
             }
 
@@ -354,14 +370,14 @@
                 alert("메모 삭제에 실패했습니다.");
             } finally {
                 noteIdToDelete = null;
-                deleteModal.style.display = 'none'; // 모달 숨기기
+                deleteModal.style.display = 'none';
             }
         }
 
         confirmDeleteBtn.addEventListener('click', deleteNote);
         cancelDeleteBtn.addEventListener('click', () => {
             noteIdToDelete = null;
-            deleteModal.style.display = 'none'; // 모달 숨기기
+            deleteModal.style.display = 'none';
         });
 
         authenticate();
