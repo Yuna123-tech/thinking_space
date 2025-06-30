@@ -86,7 +86,6 @@
             margin-top: 2rem; margin-bottom: 1rem;
         }
         #notes-board > .date-header:first-child { margin-top: 0; }
-        .modal { display: none; }
     </style>
 </head>
 <body class="p-4 sm:p-6 lg:p-8">
@@ -120,9 +119,8 @@
             <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
         </div>
 
-        <!-- ***** 수정된 부분 ***** -->
-        <!-- 아래 div의 class에서 'flex'를 제거했습니다. .modal 스타일이 적용되어 평소에는 보이지 않게 됩니다. -->
-        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
+        <!-- The 'hidden' class is added here to hide the modal by default -->
+        <div id="delete-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
                 <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
                 <p class="text-gray-600 mb-6">삭제한 메모는 다시 복구할 수 없어요.</p>
@@ -140,13 +138,18 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", ...console.log("Firebase config not found") };
+        // --- Firebase Configuration ---
+        // This configuration is automatically provided in the execution environment.
+        // For local testing, you might need to replace it with your own Firebase project configuration.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", projectId: "YOUR_PROJECT_ID", storageBucket: "YOUR_STORAGE_BUCKET", messagingSenderId: "YOUR_MESSAGING_SENDER_ID", appId: "YOUR_APP_ID" };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
+        // --- Initialize Firebase Services ---
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // --- DOM Element References ---
         const authStatusEl = document.getElementById('auth-status');
         const userIdEl = document.getElementById('user-id-display');
         const loader = document.getElementById('loader');
@@ -156,10 +159,12 @@
         const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
         const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
         
+        // --- Global State ---
         let currentUserId = null;
         let isAuthReady = false;
         let noteIdToDelete = null;
 
+        // --- Authentication ---
         onAuthStateChanged(auth, user => {
             loader.style.display = 'flex';
             if (user) {
@@ -171,6 +176,7 @@
             } else {
                 authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
                 isAuthReady = false;
+                currentUserId = null;
             }
             loader.style.display = 'none';
         });
@@ -178,9 +184,11 @@
         async function authenticate() {
             try {
                 loader.style.display = 'flex';
+                // The '__initial_auth_token' is provided by the collaborative environment.
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
+                    // Fallback to anonymous sign-in if no token is provided.
                     await signInAnonymously(auth);
                 }
             } catch (error) {
@@ -190,8 +198,10 @@
             }
         }
         
+        // --- Firestore Collection Reference ---
         const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
 
+        // --- Event Listener for Note Form Submission ---
         noteForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!isAuthReady) {
@@ -208,9 +218,14 @@
             }
             try {
                 await addDoc(notesCollectionRef, {
-                    class: studentClass, number: studentNumber, name: studentName, content: content,
-                    createdAt: serverTimestamp(), authorId: currentUserId,
-                    likeCount: 0, likedBy: [] // 공감 기능 필드 추가
+                    class: studentClass,
+                    number: studentNumber,
+                    name: studentName,
+                    content: content,
+                    createdAt: serverTimestamp(),
+                    authorId: currentUserId,
+                    likeCount: 0,
+                    likedBy: []
                 });
                 noteForm.reset();
             } catch (error) {
@@ -219,15 +234,19 @@
             }
         });
 
+        // --- Load and Render Notes ---
         function loadNotes() {
             if (!isAuthReady) return;
+
             const q = query(notesCollectionRef);
             onSnapshot(q, (snapshot) => {
                 let notesData = [];
                 snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
                 
+                // Sort notes by creation date, newest first.
                 notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
 
+                // Group notes by date.
                 const groupedNotes = notesData.reduce((acc, note) => {
                     const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
                     if (!acc[date]) acc[date] = [];
@@ -244,6 +263,7 @@
 
         function renderGroupedNotes(groupedNotes) {
             notesBoard.innerHTML = '';
+            // Sort dates so the most recent date group appears first.
             const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
             
             if (sortedDates.length === 0) {
@@ -277,13 +297,11 @@
             
             const time = note.createdAt ? note.createdAt.toDate().toLocaleTimeString("ko-KR", { hour: '2-digit', minute: '2-digit' }) : '';
 
-            let deleteButtonHTML = '';
-            if (note.authorId === currentUserId) {
-                deleteButtonHTML = `
-                    <div class="delete-btn" data-id="${note.id}" title="삭제하기">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3 0l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/></svg>
-                    </div>`;
-            }
+            // Only show delete button if the current user is the author of the note.
+            const deleteButtonHTML = note.authorId === currentUserId ? `
+                <div class="delete-btn" data-id="${note.id}" title="삭제하기">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3 0l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/></svg>
+                </div>` : '';
             
             const hasLiked = note.likedBy && note.likedBy.includes(currentUserId);
             const likeCount = note.likeCount || 0;
@@ -305,11 +323,12 @@
                 </div>
             `;
 
+            // --- Add Event Listeners to the new note element ---
             if (note.authorId === currentUserId) {
                 div.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     noteIdToDelete = e.currentTarget.dataset.id;
-                    deleteModal.style.display = 'flex';
+                    deleteModal.classList.remove('hidden'); // Show modal
                 });
             }
 
@@ -321,6 +340,7 @@
             return div;
         }
 
+        // --- Like/Unlike Functionality ---
         async function toggleLike(noteId, hasLiked) {
             if (!isAuthReady || !currentUserId) return;
             const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, noteId);
@@ -342,6 +362,7 @@
             }
         }
 
+        // --- Delete Note Functionality ---
         async function deleteNote() {
             if (!noteIdToDelete) return;
             try {
@@ -352,16 +373,17 @@
                 alert("메모 삭제에 실패했습니다.");
             } finally {
                 noteIdToDelete = null;
-                deleteModal.style.display = 'none';
+                deleteModal.classList.add('hidden'); // Hide modal
             }
         }
-
+        
         confirmDeleteBtn.addEventListener('click', deleteNote);
         cancelDeleteBtn.addEventListener('click', () => {
             noteIdToDelete = null;
-            deleteModal.style.display = 'none';
+            deleteModal.classList.add('hidden'); // Hide modal
         });
 
+        // --- Initial Authentication Call ---
         authenticate();
     </script>
 </body>
