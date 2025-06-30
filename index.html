@@ -96,6 +96,7 @@
             <p id="user-id-display" class="text-gray-500 text-sm break-all px-4"></p>
         </header>
 
+
         <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit sticky top-8">
                 <form id="note-form" class="space-y-4">
@@ -110,14 +111,16 @@
                 </form>
             </div>
 
+
             <div id="notes-board" class="lg:col-span-2">
                 <!-- 날짜별로 그룹화된 저장 목록(메모)이 여기에 표시됩니다. -->
             </div>
         </main>
-        
+       
         <div id="loader" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
             <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
         </div>
+
 
         <!-- Delete Confirmation Modal -->
         <div id="delete-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50">
@@ -131,6 +134,7 @@
             </div>
         </div>
 
+
         <!-- General Info/Alert Modal -->
         <div id="info-modal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
@@ -143,11 +147,13 @@
         </div>
     </div>
 
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
 
         // --- Firebase Configuration ---
         // 이 설정은 Gemini Canvas와 같은 실행 환경에서 자동으로 제공됩니다.
@@ -156,16 +162,31 @@
         const firebaseConfig = typeof __firebase_config !== 'undefined'
             ? JSON.parse(__firebase_config)
             : {
-                apiKey: "YOUR_API_KEY", // 로컬/GitHub용으로 교체
-                authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-                projectId: "YOUR_PROJECT_ID",
-                storageBucket: "YOUR_PROJECT_ID.appspot.com",
-                messagingSenderId: "YOUR_SENDER_ID",
-                appId: "YOUR_APP_ID"
-            };
+  apiKey: "AIzaSyDaGN-EWTFBPund4ZxJmfmYjxomcYEpeP4",
 
+
+  authDomain: "thinking-space-b629d.firebaseapp.com",
+
+
+  projectId: "thinking-space-b629d",
+
+
+  storageBucket: "thinking-space-b629d.firebasestorage.app",
+
+
+  messagingSenderId: "1015125774546",
+
+
+  appId: "1:1015125774546:web:f537a3960a64a6ffc81d0b",
+
+
+  measurementId: "G-GCMSYPL0VG"
+
+
+};
         // 앱 ID 또한 환경에서 제공된 값을 우선적으로 사용합니다.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'public-memo-board';
+
 
         // --- Configuration Check for Standalone Deployment ---
         // 환경 변수(__firebase_config)가 없을 때만 설정값을 확인하여
@@ -186,10 +207,12 @@
             throw new Error("Firebase configuration is not set. Please update the firebaseConfig object in the script.");
         }
 
+
         // --- Initialize Firebase Services ---
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+
 
         // --- DOM Element References ---
         const authStatusEl = document.getElementById('auth-status');
@@ -204,11 +227,12 @@
         const infoModalTitle = document.getElementById('info-modal-title');
         const infoModalMessage = document.getElementById('info-modal-message');
         const infoModalOkBtn = document.getElementById('info-modal-ok-btn');
-        
+       
         // --- Global State ---
         let currentUserId = null;
         let isAuthReady = false;
         let noteIdToDelete = null;
+
 
         // --- Custom Alert Function ---
         function showAlert(message, title = '알림') {
@@ -217,9 +241,11 @@
             infoModal.classList.remove('hidden');
         }
 
+
         infoModalOkBtn.addEventListener('click', () => {
             infoModal.classList.add('hidden');
         });
+
 
         // --- Authentication ---
         onAuthStateChanged(auth, user => {
@@ -229,13 +255,14 @@
                 authStatusEl.textContent = '인증 상태: 완료';
                 userIdEl.textContent = `나의 고유 ID: ${currentUserId}`;
                 isAuthReady = true;
-                loadNotes(); 
+                loadNotes();
             } else {
                 authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
                 isAuthReady = false;
                 currentUserId = null;
             }
         });
+
 
         async function authenticate() {
             try {
@@ -253,9 +280,10 @@
                 loader.classList.add('hidden');
             }
         }
-        
+       
         // --- Firestore Collection Reference ---
         const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
+
 
         // --- Event Listener for Note Form Submission ---
         noteForm.addEventListener('submit', async (e) => {
@@ -285,16 +313,19 @@
             }
         });
 
+
         // --- Load and Render Notes ---
         function loadNotes() {
             if (!isAuthReady) return;
+
 
             const q = query(notesCollectionRef);
             onSnapshot(q, (snapshot) => {
                 let notesData = [];
                 snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
-                
+               
                 notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+
 
                 const groupedNotes = notesData.reduce((acc, note) => {
                     const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
@@ -303,6 +334,7 @@
                     return acc;
                 }, {});
 
+
                 renderGroupedNotes(groupedNotes);
             }, (error) => {
                 console.error("Error fetching notes: ", error);
@@ -310,14 +342,16 @@
             });
         }
 
+
         function renderGroupedNotes(groupedNotes) {
             notesBoard.innerHTML = '';
             const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
-            
+           
             if (sortedDates.length === 0) {
                 notesBoard.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
                 return;
             }
+
 
             for (const date of sortedDates) {
                 const dateHeader = document.createElement('h2');
@@ -325,16 +359,17 @@
                 dateHeader.textContent = date;
                 notesBoard.appendChild(dateHeader);
 
+
                 const dayNotesContainer = document.createElement('div');
                 dayNotesContainer.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6';
-                
+               
                 groupedNotes[date].forEach(note => {
                     dayNotesContainer.appendChild(createNoteElement(note));
                 });
                 notesBoard.appendChild(dayNotesContainer);
             }
         }
-        
+       
         function createNoteElement(note) {
             const div = document.createElement('div');
             const colors = ['bg-yellow-200', 'bg-pink-200', 'bg-green-200', 'bg-blue-200', 'bg-purple-200'];
@@ -342,16 +377,18 @@
             const randomColor = colors[Math.floor(Math.random() * colors.length)];
             const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
             div.className = `note p-4 rounded-lg flex flex-col justify-between ${randomColor} ${randomRotation}`;
-            
+           
             const time = note.createdAt ? note.createdAt.toDate().toLocaleTimeString("ko-KR", { hour: '2-digit', minute: '2-digit' }) : '';
+
 
             const deleteButtonHTML = note.authorId === currentUserId ? `
                 <div class="delete-btn" data-id="${note.id}" title="삭제하기">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3 0l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/></svg>
                 </div>` : '';
-            
+           
             const hasLiked = note.likedBy && note.likedBy.includes(currentUserId);
             const likeCount = note.likeCount || 0;
+
 
             div.innerHTML = `
                 ${deleteButtonHTML}
@@ -370,6 +407,7 @@
                 </div>
             `;
 
+
             if (note.authorId === currentUserId) {
                 div.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -378,6 +416,7 @@
                 });
             }
 
+
             div.querySelector('.like-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
                 const noteId = e.currentTarget.dataset.id;
@@ -385,6 +424,7 @@
             });
             return div;
         }
+
 
         // --- Like/Unlike Functionality ---
         async function toggleLike(noteId, hasLiked) {
@@ -408,6 +448,7 @@
             }
         }
 
+
         // --- Delete Note Functionality ---
         async function deleteNote() {
             if (!noteIdToDelete) return;
@@ -422,15 +463,19 @@
                 deleteModal.classList.add('hidden');
             }
         }
-        
+       
         confirmDeleteBtn.addEventListener('click', deleteNote);
         cancelDeleteBtn.addEventListener('click', () => {
             noteIdToDelete = null;
             deleteModal.classList.add('hidden');
         });
 
+
         // --- Initial Authentication Call ---
         authenticate();
     </script>
 </body>
 </html>
+
+
+
