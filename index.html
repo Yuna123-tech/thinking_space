@@ -85,16 +85,16 @@
             padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;
             margin-top: 2rem; margin-bottom: 1rem;
         }
-        #notes-content-wrapper > .date-header:first-child { margin-top: 0; }
-        .modal { 
-            display: none;
-        }
+        #notes-board > .date-header:first-child { margin-top: 0; }
+        .modal { display: none; }
     </style>
 </head>
 <body class="p-4 sm:p-6 lg:p-8">
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8">
             <h1 class="text-4xl sm:text-5xl font-bold text-gray-800">📝 우리 반 생각나눔 게시판 📝</h1>
+            <p id="auth-status" class="text-gray-500 mt-2 text-sm">인증 상태: 확인 중...</p>
+            <p id="user-id-display" class="text-gray-500 text-sm break-all px-4"></p>
         </header>
 
         <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -110,25 +110,17 @@
                     <button type="submit" class="submit-btn w-full">게시하기!</button>
                 </form>
             </div>
-            
-            <!-- ***** 수정된 부분 1: '스켈레톤 로더'를 미리 그려둡니다. ***** -->
+
             <div id="notes-board" class="lg:col-span-2">
-                <div id="notes-content-wrapper">
-                    <!-- 데이터가 로딩되기 전에 보여줄 뼈대 UI -->
-                    <div class="animate-pulse">
-                        <div class="h-8 bg-gray-300 rounded-md w-3/4 mb-4"></div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                            <div class="h-40 bg-gray-300 rounded-lg"></div>
-                            <div class="h-40 bg-gray-300 rounded-lg"></div>
-                            <div class="h-40 bg-gray-300 rounded-lg"></div>
-                            <div class="h-40 bg-gray-300 rounded-lg"></div>
-                        </div>
-                    </div>
-                </div>
+                <!-- 날짜별로 그룹화된 저장 목록(메모)이 여기에 표시됩니다. -->
             </div>
         </main>
         
-        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
+        <div id="loader" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+            <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
+        </div>
+
+        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
                 <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
                 <p class="text-gray-600 mb-6">삭제한 메모는 다시 복구할 수 없어요.</p>
@@ -143,8 +135,8 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", ...console.log("Firebase config not found") };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -152,9 +144,12 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
+
+        const authStatusEl = document.getElementById('auth-status');
+        const userIdEl = document.getElementById('user-id-display');
+        const loader = document.getElementById('loader');
         const noteForm = document.getElementById('note-form');
-        const notesContentWrapper = document.getElementById('notes-content-wrapper');
+        const notesBoard = document.getElementById('notes-board');
         const deleteModal = document.getElementById('delete-modal');
         const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
         const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
@@ -164,20 +159,35 @@
         let noteIdToDelete = null;
 
         onAuthStateChanged(auth, user => {
+            loader.style.display = 'flex';
             if (user) {
                 currentUserId = user.uid;
-                if (!isAuthReady) {
-                    isAuthReady = true;
-                    loadNotes();
-                }
+                authStatusEl.textContent = '인증 상태: 완료';
+                userIdEl.textContent = `나의 고유 ID: ${currentUserId}`;
+                isAuthReady = true;
+                loadNotes(); 
             } else {
-                signInAnonymously(auth).catch(error => {
-                    console.error("익명 로그인 실패:", error);
-                    notesContentWrapper.innerHTML = `<p class="text-red-500 text-center">서버에 연결할 수 없습니다.<br>새로고침 해주세요.</p>`;
-                });
+                authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
+                isAuthReady = false;
             }
+            loader.style.display = 'none';
         });
 
+        async function authenticate() {
+            try {
+                loader.style.display = 'flex';
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                authStatusEl.textContent = '인증에 실패했습니다. 페이지를 새로고침 해주세요.';
+                loader.style.display = 'none';
+            }
+        }
+        
         const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
 
         noteForm.addEventListener('submit', async (e) => {
@@ -198,7 +208,7 @@
                 await addDoc(notesCollectionRef, {
                     class: studentClass, number: studentNumber, name: studentName, content: content,
                     createdAt: serverTimestamp(), authorId: currentUserId,
-                    likeCount: 0, likedBy: []
+                    likeCount: 0, likedBy: [] // 공감 기능 필드 추가
                 });
                 noteForm.reset();
             } catch (error) {
@@ -209,12 +219,12 @@
 
         function loadNotes() {
             if (!isAuthReady) return;
-
-            const q = query(notesCollectionRef, orderBy("createdAt", "desc"), limit(30));
-            
+            const q = query(notesCollectionRef);
             onSnapshot(q, (snapshot) => {
                 let notesData = [];
                 snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
+                
+                notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
 
                 const groupedNotes = notesData.reduce((acc, note) => {
                     const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
@@ -226,18 +236,16 @@
                 renderGroupedNotes(groupedNotes);
             }, (error) => {
                 console.error("Error fetching notes: ", error);
-                notesContentWrapper.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
+                notesBoard.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
             });
         }
-        
-        // ***** 수정된 부분 2: render 함수가 스켈레톤 UI를 실제 데이터로 교체하도록 합니다. *****
-        function renderGroupedNotes(groupedNotes) {
-            notesContentWrapper.innerHTML = ''; // 스켈레톤 UI를 지우고 새로 그릴 준비
 
+        function renderGroupedNotes(groupedNotes) {
+            notesBoard.innerHTML = '';
             const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
             
             if (sortedDates.length === 0) {
-                notesContentWrapper.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
+                notesBoard.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
                 return;
             }
 
@@ -245,7 +253,7 @@
                 const dateHeader = document.createElement('h2');
                 dateHeader.className = 'date-header';
                 dateHeader.textContent = date;
-                notesContentWrapper.appendChild(dateHeader);
+                notesBoard.appendChild(dateHeader);
 
                 const dayNotesContainer = document.createElement('div');
                 dayNotesContainer.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6';
@@ -253,7 +261,7 @@
                 groupedNotes[date].forEach(note => {
                     dayNotesContainer.appendChild(createNoteElement(note));
                 });
-                notesContentWrapper.appendChild(dayNotesContainer);
+                notesBoard.appendChild(dayNotesContainer);
             }
         }
         
@@ -352,6 +360,7 @@
             deleteModal.style.display = 'none';
         });
 
+        authenticate();
     </script>
 </body>
 </html>
