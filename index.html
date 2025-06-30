@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>생각나눔 메모 게시판</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Gaegu (손글씨체) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Gaegu', cursive;
+            background-color: #f0f4f8;
+        }
+        .note {
+            box-shadow: 5px 5px 7px rgba(33,33,33,.7);
+            transition: transform 0.15s linear;
+            min-height: 160px;
+            position: relative;
+        }
+        .note:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        .form-input, .form-textarea {
+            font-family: 'Gaegu', cursive;
+            font-size: 1.1rem;
+            border: 2px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+        }
+        .form-input:focus, .form-textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+        .submit-btn {
+            font-family: 'Gaegu', cursive;
+            font-size: 1.25rem;
+            font-weight: 700;
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease-in-out;
+        }
+        .submit-btn:hover {
+            background-color: #4338ca;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .delete-btn {
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(0,0,0,0.1); border-radius: 50%;
+            width: 28px; height: 28px; display: flex;
+            align-items: center; justify-content: center;
+            cursor: pointer; opacity: 0.6; transition: all 0.2s;
+        }
+        .delete-btn:hover {
+            opacity: 1; background: rgba(0,0,0,0.2); transform: scale(1.1);
+        }
+        .like-btn {
+            background: none; border: none; cursor: pointer;
+            padding: 4px; transition: transform 0.2s ease;
+        }
+        .like-btn:hover {
+            transform: scale(1.2);
+        }
+        .like-btn svg {
+            width: 20px; height: 20px;
+        }
+        .like-btn .liked-heart {
+            color: #ef4444; /* red-500 */
+        }
+        .like-btn .unliked-heart {
+            color: #6b7280; /* gray-500 */
+        }
+        .date-header {
+            font-size: 1.75rem; font-weight: 700; color: #1f2937;
+            padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;
+            margin-top: 2rem; margin-bottom: 1rem;
+        }
+        #notes-board > .date-header:first-child { margin-top: 0; }
+        .modal { 
+            display: none; /* 평소에는 모달을 숨깁니다. */
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 lg:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-bold text-gray-800">📝 우리 반 생각나눔 게시판 📝</h1>
+            <p id="auth-status" class="text-gray-500 mt-2 text-sm">인증 상태: 확인 중...</p>
+            <p id="user-id-display" class="text-gray-500 text-sm break-all px-4"></p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit sticky top-8">
+                <form id="note-form" class="space-y-4">
+                    <h2 class="text-2xl font-bold text-gray-700">메모 남기기</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="number" id="class" class="form-input w-full" placeholder="반" required>
+                        <input type="number" id="number" class="form-input w-full" placeholder="번호" required>
+                    </div>
+                    <input type="text" id="name" class="form-input w-full" placeholder="이름" required>
+                    <textarea id="content" class="form-textarea w-full" rows="5" placeholder="어떤 생각이 들었나요?" required></textarea>
+                    <button type="submit" class="submit-btn w-full">게시하기!</button>
+                </form>
+            </div>
+
+            <div id="notes-board" class="lg:col-span-2">
+                <!-- 날짜별로 그룹화된 저장 목록(메모)이 여기에 표시됩니다. -->
+            </div>
+        </main>
+        
+        <div id="loader" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+            <div class="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
+        </div>
+
+        <!-- ***** 수정된 부분 ***** -->
+        <!-- 아래 div의 class에서 'flex'를 제거했습니다. .modal 스타일이 적용되어 평소에는 보이지 않게 됩니다. -->
+        <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
+                <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
+                <p class="text-gray-600 mb-6">삭제한 메모는 다시 복구할 수 없어요.</p>
+                <div class="flex justify-center gap-4">
+                    <button id="cancel-delete-btn" class="submit-btn bg-gray-300 hover:bg-gray-400 text-gray-800">취소</button>
+                    <button id="confirm-delete-btn" class="submit-btn bg-red-600 hover:bg-red-700">삭제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", ...console.log("Firebase config not found") };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const authStatusEl = document.getElementById('auth-status');
+        const userIdEl = document.getElementById('user-id-display');
+        const loader = document.getElementById('loader');
+        const noteForm = document.getElementById('note-form');
+        const notesBoard = document.getElementById('notes-board');
+        const deleteModal = document.getElementById('delete-modal');
+        const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+        const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+        
+        let currentUserId = null;
+        let isAuthReady = false;
+        let noteIdToDelete = null;
+
+        onAuthStateChanged(auth, user => {
+            loader.style.display = 'flex';
+            if (user) {
+                currentUserId = user.uid;
+                authStatusEl.textContent = '인증 상태: 완료';
+                userIdEl.textContent = `나의 고유 ID: ${currentUserId}`;
+                isAuthReady = true;
+                loadNotes(); 
+            } else {
+                authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
+                isAuthReady = false;
+            }
+            loader.style.display = 'none';
+        });
+
+        async function authenticate() {
+            try {
+                loader.style.display = 'flex';
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                authStatusEl.textContent = '인증에 실패했습니다. 페이지를 새로고침 해주세요.';
+                loader.style.display = 'none';
+            }
+        }
+        
+        const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
+
+        noteForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!isAuthReady) {
+                alert("아직 서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+                return;
+            }
+            const studentClass = document.getElementById('class').value;
+            const studentNumber = document.getElementById('number').value;
+            const studentName = document.getElementById('name').value;
+            const content = document.getElementById('content').value;
+            if (!studentClass || !studentNumber || !studentName.trim() || !content.trim()) {
+                alert('모든 칸을 채워주세요!');
+                return;
+            }
+            try {
+                await addDoc(notesCollectionRef, {
+                    class: studentClass, number: studentNumber, name: studentName, content: content,
+                    createdAt: serverTimestamp(), authorId: currentUserId,
+                    likeCount: 0, likedBy: [] // 공감 기능 필드 추가
+                });
+                noteForm.reset();
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                alert('메모를 추가하는 데 실패했습니다.');
+            }
+        });
+
+        function loadNotes() {
+            if (!isAuthReady) return;
+            const q = query(notesCollectionRef);
+            onSnapshot(q, (snapshot) => {
+                let notesData = [];
+                snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
+                
+                notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+
+                const groupedNotes = notesData.reduce((acc, note) => {
+                    const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
+                    if (!acc[date]) acc[date] = [];
+                    acc[date].push(note);
+                    return acc;
+                }, {});
+
+                renderGroupedNotes(groupedNotes);
+            }, (error) => {
+                console.error("Error fetching notes: ", error);
+                notesBoard.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
+            });
+        }
+
+        function renderGroupedNotes(groupedNotes) {
+            notesBoard.innerHTML = '';
+            const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
+            
+            if (sortedDates.length === 0) {
+                notesBoard.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
+                return;
+            }
+
+            for (const date of sortedDates) {
+                const dateHeader = document.createElement('h2');
+                dateHeader.className = 'date-header';
+                dateHeader.textContent = date;
+                notesBoard.appendChild(dateHeader);
+
+                const dayNotesContainer = document.createElement('div');
+                dayNotesContainer.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6';
+                
+                groupedNotes[date].forEach(note => {
+                    dayNotesContainer.appendChild(createNoteElement(note));
+                });
+                notesBoard.appendChild(dayNotesContainer);
+            }
+        }
+        
+        function createNoteElement(note) {
+            const div = document.createElement('div');
+            const colors = ['bg-yellow-200', 'bg-pink-200', 'bg-green-200', 'bg-blue-200', 'bg-purple-200'];
+            const rotations = ['rotate-1', '-rotate-2', 'rotate-2', '-rotate-1', 'rotate-3'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+            div.className = `note p-4 rounded-lg flex flex-col justify-between ${randomColor} ${randomRotation}`;
+            
+            const time = note.createdAt ? note.createdAt.toDate().toLocaleTimeString("ko-KR", { hour: '2-digit', minute: '2-digit' }) : '';
+
+            let deleteButtonHTML = '';
+            if (note.authorId === currentUserId) {
+                deleteButtonHTML = `
+                    <div class="delete-btn" data-id="${note.id}" title="삭제하기">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3 0l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m3.5-.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06Z"/></svg>
+                    </div>`;
+            }
+            
+            const hasLiked = note.likedBy && note.likedBy.includes(currentUserId);
+            const likeCount = note.likeCount || 0;
+
+            div.innerHTML = `
+                ${deleteButtonHTML}
+                <p class="text-gray-800 text-lg whitespace-pre-wrap break-words flex-grow pr-6">${note.content}</p>
+                <div class="mt-4 pt-2 border-t border-gray-500 border-opacity-50 flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-gray-700">${note.class}반 ${note.number}번 ${note.name}</p>
+                        <p class="text-sm text-gray-600">${time}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="like-btn" data-id="${note.id}">
+                            <svg class="${hasLiked ? 'liked-heart' : 'unliked-heart'}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" /></svg>
+                        </button>
+                        <span class="font-bold text-lg text-gray-700">${likeCount}</span>
+                    </div>
+                </div>
+            `;
+
+            if (note.authorId === currentUserId) {
+                div.querySelector('.delete-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    noteIdToDelete = e.currentTarget.dataset.id;
+                    deleteModal.style.display = 'flex'; // 삭제 버튼 클릭 시 모달을 보이게 함
+                });
+            }
+
+            div.querySelector('.like-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const noteId = e.currentTarget.dataset.id;
+                toggleLike(noteId, hasLiked);
+            });
+            return div;
+        }
+
+        async function toggleLike(noteId, hasLiked) {
+            if (!isAuthReady || !currentUserId) return;
+            const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, noteId);
+            try {
+                if (hasLiked) {
+                    await updateDoc(noteRef, {
+                        likeCount: increment(-1),
+                        likedBy: arrayRemove(currentUserId)
+                    });
+                } else {
+                    await updateDoc(noteRef, {
+                        likeCount: increment(1),
+                        likedBy: arrayUnion(currentUserId)
+                    });
+                }
+            } catch (error) {
+                console.error("Error toggling like: ", error);
+                alert("공감 기능에 오류가 발생했습니다.");
+            }
+        }
+
+        async function deleteNote() {
+            if (!noteIdToDelete) return;
+            try {
+                const noteRef = doc(db, `artifacts/${appId}/public/data/notes`, noteIdToDelete);
+                await deleteDoc(noteRef);
+            } catch (error) {
+                console.error("Error removing document: ", error);
+                alert("메모 삭제에 실패했습니다.");
+            } finally {
+                noteIdToDelete = null;
+                deleteModal.style.display = 'none'; // 모달 숨기기
+            }
+        }
+
+        confirmDeleteBtn.addEventListener('click', deleteNote);
+        cancelDeleteBtn.addEventListener('click', () => {
+            noteIdToDelete = null;
+            deleteModal.style.display = 'none'; // 모달 숨기기
+        });
+
+        authenticate();
+    </script>
+</body>
+</html>
