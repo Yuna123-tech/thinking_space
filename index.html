@@ -85,9 +85,9 @@
             padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;
             margin-top: 2rem; margin-bottom: 1rem;
         }
-        #notes-board > .date-header:first-child { margin-top: 0; }
+        #notes-content-wrapper > .date-header:first-child { margin-top: 0; }
         .modal { 
-            display: none; /* 평소에는 모달을 숨깁니다. */
+            display: none;
         }
     </style>
 </head>
@@ -112,19 +112,17 @@
                     <button type="submit" class="submit-btn w-full">게시하기!</button>
                 </form>
             </div>
-
-            <!-- ***** 수정된 부분 1: 로딩 화면을 전체가 아닌 메모 목록 부분에만 표시합니다. ***** -->
+            
+            <!-- ***** 수정된 부분 1: 로딩 화면과 메모 내용이 표시될 컨테이너를 분리합니다. ***** -->
             <div id="notes-board" class="lg:col-span-2 relative min-h-[400px]">
-                <!-- 로더를 메모 게시판 안으로 이동 -->
                 <div id="loader" class="absolute inset-0 bg-gray-100 bg-opacity-75 flex items-center justify-center z-10 rounded-lg">
                     <div class="animate-spin rounded-full h-24 w-24 border-t-2 border-b-2 border-indigo-500"></div>
                 </div>
-                <!-- 날짜별로 그룹화된 저장 목록(메모)이 여기에 표시됩니다. -->
+                <!-- 메모 내용은 이 div 안에 그려집니다. -->
+                <div id="notes-content-wrapper"></div>
             </div>
         </main>
         
-        <!-- 전체 화면 로더는 삭제했습니다. -->
-
         <div id="delete-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-60 items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-auto text-center">
                 <h3 class="text-2xl font-bold mb-4">정말 삭제할까요?</h3>
@@ -139,10 +137,11 @@
 
     <!-- Firebase SDK -->
     <script type="module">
-        // ***** 수정된 부분 2: orderBy, limit를 추가로 import 합니다. *****
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc, updateDoc, increment, arrayUnion, arrayRemove, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // signInWithCustomToken은 이제 사용하지 않으므로 import 목록에서 제거해도 됩니다.
 
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "YOUR_API_KEY", authDomain: "YOUR_AUTH_DOMAIN", ...console.log("Firebase config not found") };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -155,7 +154,7 @@
         const userIdEl = document.getElementById('user-id-display');
         const loader = document.getElementById('loader');
         const noteForm = document.getElementById('note-form');
-        const notesBoard = document.getElementById('notes-board');
+        const notesContentWrapper = document.getElementById('notes-content-wrapper');
         const deleteModal = document.getElementById('delete-modal');
         const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
         const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
@@ -164,36 +163,30 @@
         let isAuthReady = false;
         let noteIdToDelete = null;
 
+        // ***** 수정된 부분 2: 인증 로직을 개선하여 더 빠르게 반응하도록 합니다. *****
         onAuthStateChanged(auth, user => {
-            // 전체 로더를 제어하는 코드는 삭제했습니다.
             if (user) {
+                // 사용자가 성공적으로 인증된 경우
                 currentUserId = user.uid;
                 authStatusEl.textContent = '인증 상태: 완료';
                 userIdEl.textContent = `나의 고유 ID: ${currentUserId}`;
-                isAuthReady = true;
-                loadNotes(); 
+                
+                // 아직 메모 로딩을 시작하지 않았다면 시작합니다.
+                if (!isAuthReady) {
+                    isAuthReady = true;
+                    loadNotes();
+                }
             } else {
-                authStatusEl.textContent = '인증 상태: 실패 또는 로그아웃';
-                isAuthReady = false;
-                loader.style.display = 'none'; // 인증 실패 시 로더 숨기기
+                // 사용자가 없는 초기 상태이거나 로그아웃된 경우, 익명 로그인을 시도합니다.
+                authStatusEl.textContent = '인증 상태: 연결 중...';
+                signInAnonymously(auth).catch(error => {
+                    console.error("익명 로그인 실패:", error);
+                    authStatusEl.textContent = '오류: 서버에 연결할 수 없습니다. 새로고침 해주세요.';
+                    loader.style.display = 'none'; // 연결 실패 시 로더 숨기기
+                });
             }
         });
 
-        async function authenticate() {
-            try {
-                // authenticate 함수 시작 시 로더를 보여줄 필요가 없어졌습니다.
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Authentication failed:", error);
-                authStatusEl.textContent = '인증에 실패했습니다. 페이지를 새로고침 해주세요.';
-                loader.style.display = 'none';
-            }
-        }
-        
         const notesCollectionRef = collection(db, `artifacts/${appId}/public/data/notes`);
 
         noteForm.addEventListener('submit', async (e) => {
@@ -225,17 +218,14 @@
 
         function loadNotes() {
             if (!isAuthReady) return;
+            
             loader.style.display = 'flex'; // 데이터 로딩 시작 시 로더 표시
 
-            // ***** 수정된 부분 3: 최신순으로 30개만 가져오도록 쿼리를 수정합니다. *****
             const q = query(notesCollectionRef, orderBy("createdAt", "desc"), limit(30));
             
             onSnapshot(q, (snapshot) => {
                 let notesData = [];
                 snapshot.forEach(doc => notesData.push({ id: doc.id, ...doc.data() }));
-                
-                // 쿼리에서 이미 정렬했으므로 이 코드는 필요 없습니다.
-                // notesData.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
 
                 const groupedNotes = notesData.reduce((acc, note) => {
                     const date = note.createdAt ? note.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '날짜 없음';
@@ -248,24 +238,18 @@
                 loader.style.display = 'none'; // 데이터 렌더링 완료 후 로더 숨기기
             }, (error) => {
                 console.error("Error fetching notes: ", error);
-                notesBoard.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
+                notesContentWrapper.innerHTML = '<p class="text-red-500">메모를 불러오는 데 실패했습니다.</p>';
                 loader.style.display = 'none'; // 에러 발생 시에도 로더 숨기기
             });
         }
 
         function renderGroupedNotes(groupedNotes) {
-            // 로더가 notesBoard 안에 있으므로, innerHTML을 초기화할 때 로더가 사라지지 않도록 처리합니다.
-            const contentContainer = document.querySelector('#notes-board > div:not(#loader)') || document.createElement('div');
-            if (!contentContainer.parentElement) {
-                notesBoard.appendChild(contentContainer);
-            }
-            contentContainer.innerHTML = '';
-
+            notesContentWrapper.innerHTML = ''; // 메모 컨테이너만 비웁니다.
 
             const sortedDates = Object.keys(groupedNotes).sort((a, b) => new Date(b.split(' (')[0]) - new Date(a.split(' (')[0]));
             
             if (sortedDates.length === 0) {
-                contentContainer.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
+                notesContentWrapper.innerHTML = `<p class="text-gray-500 text-center text-xl mt-10">아직 작성된 메모가 없어요.<br>첫 번째 생각을 남겨보세요!</p>`;
                 return;
             }
 
@@ -273,7 +257,7 @@
                 const dateHeader = document.createElement('h2');
                 dateHeader.className = 'date-header';
                 dateHeader.textContent = date;
-                contentContainer.appendChild(dateHeader);
+                notesContentWrapper.appendChild(dateHeader);
 
                 const dayNotesContainer = document.createElement('div');
                 dayNotesContainer.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6';
@@ -281,7 +265,7 @@
                 groupedNotes[date].forEach(note => {
                     dayNotesContainer.appendChild(createNoteElement(note));
                 });
-                contentContainer.appendChild(dayNotesContainer);
+                notesContentWrapper.appendChild(dayNotesContainer);
             }
         }
         
@@ -380,7 +364,6 @@
             deleteModal.style.display = 'none';
         });
 
-        authenticate();
     </script>
 </body>
 </html>
